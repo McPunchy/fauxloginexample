@@ -867,29 +867,33 @@ function renderMail(){
 mailUI.sel.addEventListener('change',()=>{ mailUI.file.disabled = (mailUI.sel.value===''); });
 
 mailUI.file.addEventListener('click', ()=>{
-  if(inbox.length===0) return;
-  const chosen = mailUI.sel.value;
+  if (inbox.length === 0) return;
+
+  const chosen   = mailUI.sel.value;
   const expected = inbox[cur].ans;
 
-  // handle Zero Hour immediately
-  if (expected === 'Zero Hour' && chosen === 'Zero Hour'){
-    triggerLockout();
+  // Always end on Zero Hour — branch tone
+  if (expected === 'Zero Hour') {
+    if (chosen === expected) {
+      mailScore += 10;               // optional
+      triggerLockout('clean');       // uses your existing lock markup
+    } else {
+      panicBurst().then(()=>triggerLockout('compromised')); // reuses same markup, swaps content + style
+    }
     return;
   }
 
+  // Normal messages
   if (chosen === expected) mailScore += 10;
   mailUI.score.textContent = String(mailScore);
 
-  // remove the filed message from inbox
-  inbox.splice(cur,1);
-
-  // reset selection and viewer to waiting state
-  cur = Math.max(0, Math.min(cur, inbox.length-1));
+  inbox.splice(cur, 1);
+  cur = Math.max(0, Math.min(cur, inbox.length - 1));
   renderList(); renderMail();
-
-  // deliver the next item after a delay (if any)
   deliverNext();
 });
+
+
 
 function deliverNext(){
   if(queue.length===0) return;
@@ -903,11 +907,60 @@ function deliverNext(){
   }, NEXT_DELAY_MS);
 }
 
-function triggerLockout(){
+function triggerLockout(kind = 'clean'){
   setTimeout(()=>{
-    mailUI.lock.classList.add('open');
-    document.querySelectorAll('button,select,input').forEach(el=>el.disabled=true);
+    // disable inputs
+    document.querySelectorAll('button,select,input').forEach(el => el.disabled = true);
+
+    const lock   = mailUI.lock;                 // #lock
+    const banner = lock.querySelector('.banner');
+    const code   = lock.querySelector('.code');
+    const cont   = lock.querySelector('.content');
+    const card   = lock.querySelector('.lockcard');
+
+    // reset + apply variant class
+    lock.classList.remove('open','compromised');
+    card.classList.remove('screen-jitter');     // we’ll reapply conditionally below
+
+    if (kind === 'clean'){
+      banner.textContent = 'Notice';
+      code.textContent   = 'ZERO HOUR PROTOCOL';
+      cont.innerHTML = `
+        <p class="big sweep">EVACUATE TO NEAREST SHELTER AREA</p>
+        <p>Communications are restricted. If separation occurs, presume continuation of 'ordinary' life as outlined in pamphlet 701-D. Do not attempt to contact friends or family. Do not presume figures of friends and family as friendly.</p>
+        <p class="hint">Routing has ended. Windows may be closed. (The game is over. Thanks for trying it!)</p>
+      `;
+      card.classList.add('screen-jitter');      // your original subtle jitter
+    } else {
+      // compromised variant
+      lock.classList.add('compromised');        // for CSS tweaks below
+      banner.textContent = 'Directive';
+      code.textContent   = 'YOU ARE COMPROMISED';
+      cont.innerHTML = `
+        <p class="big sweep">DO NOT PRESUME CONTINUED HUMANNESS</p>
+        <p>Your classifications were non-generalizable. The Bureau thanks you for your service, however rendered.</p>
+        <p class="hint">Further routing is no longer required. Remain where you are. The <span class="kbd">ordinary</span> will resume without you. (The game is over. Thanks for trying it!)</p>
+      `;
+      card.classList.add('screen-jitter');      // keep the jitter for intensity
+    }
+
+    lock.classList.add('open');
   }, 250);
+}
+
+function panicBurst(){
+  return new Promise(resolve=>{
+    const echo = {
+      from:"<system>", when:"—",
+      subj:"IT IS HAPPENING", body:"IT IS HAPPENING", ans:"Zero Hour"
+    };
+    let n = 6;
+    const t = setInterval(()=>{
+      inbox.push({...echo});
+      renderList(); // quick redraw
+      if(--n === 0){ clearInterval(t); setTimeout(resolve, 150); }
+    }, 90);
+  });
 }
 
 function goToMail(){
